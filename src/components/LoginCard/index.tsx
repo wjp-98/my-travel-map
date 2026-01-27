@@ -86,6 +86,7 @@ export default function LoginCard() {
   const isDraggingRef = useRef(false);
   const startXRef = useRef(0);
   const startPositionRef = useRef(0);
+  const containerLeftRef = useRef(0);
   const maxPositionRef = useRef(0);
 
   const handleSliderStart = (e: React.MouseEvent | React.TouchEvent) => {
@@ -96,9 +97,11 @@ export default function LoginCard() {
     const container = containerRef.current;
     if (!slider || !container || verificationSuccess) return;
     
-    // 获取初始位置
+    // 获取初始位置和容器边界
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const containerRect = container.getBoundingClientRect();
+    
+    containerLeftRef.current = containerRect.left;
     maxPositionRef.current = containerRect.width - 40; // 40 is slider width
     
     // 计算当前滑块位置
@@ -124,14 +127,14 @@ export default function LoginCard() {
     if (!verificationSuccess && sliderRef.current) {
       // 添加过渡效果用于回弹
       const slider = sliderRef.current;
-      slider.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+      slider.style.transition = 'transform 0.4s cubic-bezier(0.23, 1, 0.32, 1)';
       slider.style.transform = 'translateX(0)';
       setTimeout(() => {
         if (sliderRef.current) {
           sliderRef.current.style.transition = '';
           sliderRef.current.style.willChange = '';
         }
-      }, 300);
+      }, 400);
     } else if (sliderRef.current) {
       // 拖动成功时也清理 willChange
       sliderRef.current.style.willChange = '';
@@ -145,48 +148,42 @@ export default function LoginCard() {
     const container = containerRef.current;
     if (!slider || !container) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const updatePosition = (clientX: number) => {
       if (!isDraggingRef.current) return;
       
-      // 计算新位置：基于初始位置 + 鼠标移动距离
-      const deltaX = e.clientX - startXRef.current;
-      let position = startPositionRef.current + deltaX;
+      // 核心改进：使用相对于容器的绝对坐标计算，而不是增量计算
+      // 这样即使鼠标移动再快，只要在 document 内，位置计算就是绝对准确的
+      let position = clientX - containerLeftRef.current - 20; // 20 是滑块中心偏移（假设滑块宽40）
+      
       const maxPosition = maxPositionRef.current;
       
       // 限制在有效范围内
       position = Math.max(0, Math.min(position, maxPosition));
 
-      // 直接更新，实时跟随
-      slider.style.transform = `translateX(${position}px)`;
+      // 使用 requestAnimationFrame 优化渲染性能
+      requestAnimationFrame(() => {
+        if (slider && isDraggingRef.current) {
+          slider.style.transform = `translateX(${position}px)`;
+          
+          // 检查终点 - 增加判定范围提高易用性
+          if (position >= maxPosition - 2) {
+            setVerificationSuccess(true);
+            setIsVerifying(false);
+            isDraggingRef.current = false;
+            slider.style.transform = `translateX(${maxPosition}px)`;
+          }
+        }
+      });
+    };
 
-      // 检查终点
-      if (position >= maxPosition - 2) {
-        setVerificationSuccess(true);
-        setIsVerifying(false);
-        isDraggingRef.current = false;
-      }
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      updatePosition(e.clientX);
     };
 
     const handleTouchMove = (e: TouchEvent) => {
       if (!isDraggingRef.current || e.touches.length === 0) return;
-      
-      // 计算新位置
-      const deltaX = e.touches[0].clientX - startXRef.current;
-      let position = startPositionRef.current + deltaX;
-      const maxPosition = maxPositionRef.current;
-      
-      // 限制在有效范围内
-      position = Math.max(0, Math.min(position, maxPosition));
-
-      // 直接更新
-      slider.style.transform = `translateX(${position}px)`;
-
-      // 检查终点
-      if (position >= maxPosition - 2) {
-        setVerificationSuccess(true);
-        setIsVerifying(false);
-        isDraggingRef.current = false;
-      }
+      updatePosition(e.touches[0].clientX);
     };
 
     const handleMouseUp = (e: MouseEvent) => {
