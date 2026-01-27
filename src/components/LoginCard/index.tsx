@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
@@ -24,6 +24,7 @@ export default function LoginCard() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationSuccess, setVerificationSuccess] = useState(false);
   const sliderRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const { login } = useAuth();
 
@@ -81,36 +82,159 @@ export default function LoginCard() {
     }
   };
 
-  const handleSliderMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!sliderRef.current || !isVerifying) return;
 
-    const slider = sliderRef.current;
-    const container = slider.parentElement;
-    if (!container) return;
-
-    const rect = container.getBoundingClientRect();
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const position = Math.max(0, Math.min(clientX - rect.left - 20, rect.width - 40));
-
-    slider.style.transform = `translateX(${position}px)`;
-
-    if (position >= rect.width - 50) {
-      setVerificationSuccess(true);
-      setIsVerifying(false);
-    }
-  };
+  const isDraggingRef = useRef(false);
+  const startXRef = useRef(0);
+  const startPositionRef = useRef(0);
 
   const handleSliderStart = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
+    e.stopPropagation();
+    
+    const slider = sliderRef.current;
+    const container = containerRef.current;
+    if (!slider || !container) return;
+    
+    // 获取初始位置
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const containerRect = container.getBoundingClientRect();
+    
+    // 计算当前滑块位置
+    const currentTransform = slider.style.transform;
+    const currentPosition = currentTransform ? parseFloat(currentTransform.match(/translateX\(([^)]+)\)/)?.[1] || '0') : 0;
+    
+    startXRef.current = clientX;
+    startPositionRef.current = currentPosition;
+    
+    // 立即设置拖动状态
+    isDraggingRef.current = true;
     setIsVerifying(true);
+    
+    // 移除过渡效果以确保拖动流畅，并优化性能
+    slider.style.transition = '';
+    slider.style.willChange = 'transform';
   };
 
-  const handleSliderEnd = () => {
+  const handleSliderEnd = useCallback(() => {
+    isDraggingRef.current = false;
     if (!verificationSuccess && sliderRef.current) {
-      sliderRef.current.style.transform = 'translateX(0)';
+      // 添加过渡效果用于回弹
+      const slider = sliderRef.current;
+      slider.style.transition = 'transform 0.3s ease-out';
+      slider.style.transform = 'translateX(0)';
+      setTimeout(() => {
+        if (sliderRef.current) {
+          sliderRef.current.style.transition = '';
+          sliderRef.current.style.willChange = '';
+        }
+      }, 300);
+    } else if (sliderRef.current) {
+      // 拖动成功时也清理 willChange
+      sliderRef.current.style.willChange = '';
     }
     setIsVerifying(false);
-  };
+  }, [verificationSuccess]);
+
+  // 添加全局事件监听器 - 始终监听，但只在拖动时响应
+  useEffect(() => {
+    const slider = sliderRef.current;
+    const container = containerRef.current;
+    if (!slider || !container) return;
+
+    const sliderWidth = 40; // 滑块宽度
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const containerRect = container.getBoundingClientRect();
+      const maxPosition = containerRect.width - sliderWidth;
+      
+      // 计算新位置：基于初始位置 + 鼠标移动距离
+      const deltaX = e.clientX - startXRef.current;
+      let position = startPositionRef.current + deltaX;
+      
+      // 限制在有效范围内
+      position = Math.max(0, Math.min(position, maxPosition));
+
+      // 直接更新，实时跟随
+      slider.style.transform = `translateX(${position}px)`;
+
+      // 检查终点
+      if (position >= maxPosition - 5) {
+        setVerificationSuccess(true);
+        setIsVerifying(false);
+        isDraggingRef.current = false;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isDraggingRef.current || e.touches.length === 0) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const containerRect = container.getBoundingClientRect();
+      const maxPosition = containerRect.width - sliderWidth;
+      
+      // 计算新位置
+      const deltaX = e.touches[0].clientX - startXRef.current;
+      let position = startPositionRef.current + deltaX;
+      
+      // 限制在有效范围内
+      position = Math.max(0, Math.min(position, maxPosition));
+
+      // 直接更新
+      slider.style.transform = `translateX(${position}px)`;
+
+      // 检查终点
+      if (position >= maxPosition - 5) {
+        setVerificationSuccess(true);
+        setIsVerifying(false);
+        isDraggingRef.current = false;
+      }
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (isDraggingRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleSliderEnd();
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (isDraggingRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleSliderEnd();
+      }
+    };
+
+    // 处理鼠标离开窗口的情况
+    const handleMouseLeave = (e: MouseEvent) => {
+      if (isDraggingRef.current && e.relatedTarget === null) {
+        handleSliderEnd();
+      }
+    };
+
+    // 始终添加事件监听器，确保即使鼠标移出也能跟踪
+    document.addEventListener('mousemove', handleMouseMove, { capture: true, passive: false });
+    document.addEventListener('mouseup', handleMouseUp, { capture: true, passive: false });
+    document.addEventListener('mouseleave', handleMouseLeave, { capture: true });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false, capture: true });
+    document.addEventListener('touchend', handleTouchEnd, { capture: true });
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove, true);
+      document.removeEventListener('mouseup', handleMouseUp, true);
+      document.removeEventListener('mouseleave', handleMouseLeave, true);
+      document.removeEventListener('touchmove', handleTouchMove, true);
+      document.removeEventListener('touchend', handleTouchEnd, true);
+    };
+  }, [handleSliderEnd]);
 
   return (
     <motion.div
@@ -219,7 +343,7 @@ export default function LoginCard() {
               >
                 <Input.Password
                   placeholder="请输入密码"
-                  iconRender={(visible) => (visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
+                  iconRender={(visible: boolean) => (visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
                 />
               </Item>
 
@@ -231,8 +355,8 @@ export default function LoginCard() {
                     dependencies={['password']}
                     rules={[
                       { required: true, message: '请确认密码' },
-                      ({ getFieldValue }) => ({
-                        validator(_, value) {
+                      ({ getFieldValue }: { getFieldValue: (name: string) => any }) => ({
+                        validator(_: any, value: string) {
                           if (!value || getFieldValue('password') === value) {
                             return Promise.resolve();
                           }
@@ -243,7 +367,7 @@ export default function LoginCard() {
                   >
                     <Input.Password
                       placeholder="请再次输入密码"
-                      iconRender={(visible) => (visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
+                      iconRender={(visible:boolean) => (visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
                     />
                   </Item>
 
@@ -285,25 +409,18 @@ export default function LoginCard() {
 
               {/* 滑块验证 */}
               <div className="mt-6">
-                <div className="relative h-10 bg-gray-100 rounded-full">
+                <div 
+                  ref={containerRef} 
+                  className="relative h-10 bg-gray-100 rounded-full"
+                  style={{ touchAction: 'none' }}
+                >
                   <div
                     ref={sliderRef}
-                    className={`absolute left-0 top-0 h-10 w-10 z-10 bg-indigo-600 rounded-full cursor-pointer flex items-center justify-center transition-transform duration-100 ${verificationSuccess ? 'bg-green-500' : ''
+                    className={`absolute left-0 top-0 h-10 w-10 z-10 bg-indigo-600 rounded-full cursor-grab active:cursor-grabbing flex items-center justify-center ${verificationSuccess ? 'bg-green-500' : ''
                       }`}
                     onMouseDown={handleSliderStart}
-                    onMouseMove={handleSliderMove}
-                    onMouseUp={handleSliderEnd}
-                    onMouseLeave={(e) => {
-                      if (e.buttons === 1) {
-                        handleSliderMove(e);
-                      } else {
-                        handleSliderEnd();
-                      }
-                    }}
                     onTouchStart={handleSliderStart}
-                    onTouchMove={handleSliderMove}
-                    onTouchEnd={handleSliderEnd}
-                    style={{ touchAction: 'none', userSelect: 'none' }}
+                    style={{ touchAction: 'none', userSelect: 'none', willChange: 'transform', pointerEvents: 'auto' }}
                   >
                     <svg
                       className="w-5 h-5 text-white"
@@ -319,7 +436,10 @@ export default function LoginCard() {
                       />
                     </svg>
                   </div>
-                  <div className={`absolute inset-0 flex items-center justify-center text-sm text-gray-500 ${verificationSuccess ? 'text-green-500' : 'text-gray-500'}`}>
+                  <div 
+                    className={`absolute inset-0 flex items-center justify-center text-sm text-gray-500 ${verificationSuccess ? 'text-green-500' : 'text-gray-500'}`}
+                    style={{ pointerEvents: 'none' }}
+                  >
                     {verificationSuccess
                       ? '验证成功'
                       : '请按住滑块，拖动到最右边'}
