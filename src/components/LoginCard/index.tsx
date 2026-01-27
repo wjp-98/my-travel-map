@@ -86,6 +86,7 @@ export default function LoginCard() {
   const isDraggingRef = useRef(false);
   const startXRef = useRef(0);
   const startPositionRef = useRef(0);
+  const maxPositionRef = useRef(0);
 
   const handleSliderStart = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
@@ -93,11 +94,12 @@ export default function LoginCard() {
     
     const slider = sliderRef.current;
     const container = containerRef.current;
-    if (!slider || !container) return;
+    if (!slider || !container || verificationSuccess) return;
     
     // 获取初始位置
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const containerRect = container.getBoundingClientRect();
+    maxPositionRef.current = containerRect.width - 40; // 40 is slider width
     
     // 计算当前滑块位置
     const currentTransform = slider.style.transform;
@@ -111,16 +113,18 @@ export default function LoginCard() {
     setIsVerifying(true);
     
     // 移除过渡效果以确保拖动流畅，并优化性能
-    slider.style.transition = '';
+    slider.style.transition = 'none';
     slider.style.willChange = 'transform';
   };
 
   const handleSliderEnd = useCallback(() => {
+    if (!isDraggingRef.current) return;
     isDraggingRef.current = false;
+    
     if (!verificationSuccess && sliderRef.current) {
       // 添加过渡效果用于回弹
       const slider = sliderRef.current;
-      slider.style.transition = 'transform 0.3s ease-out';
+      slider.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
       slider.style.transform = 'translateX(0)';
       setTimeout(() => {
         if (sliderRef.current) {
@@ -141,20 +145,13 @@ export default function LoginCard() {
     const container = containerRef.current;
     if (!slider || !container) return;
 
-    const sliderWidth = 40; // 滑块宽度
-
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDraggingRef.current) return;
-      
-      e.preventDefault();
-      e.stopPropagation();
-      
-      const containerRect = container.getBoundingClientRect();
-      const maxPosition = containerRect.width - sliderWidth;
       
       // 计算新位置：基于初始位置 + 鼠标移动距离
       const deltaX = e.clientX - startXRef.current;
       let position = startPositionRef.current + deltaX;
+      const maxPosition = maxPositionRef.current;
       
       // 限制在有效范围内
       position = Math.max(0, Math.min(position, maxPosition));
@@ -163,7 +160,7 @@ export default function LoginCard() {
       slider.style.transform = `translateX(${position}px)`;
 
       // 检查终点
-      if (position >= maxPosition - 5) {
+      if (position >= maxPosition - 2) {
         setVerificationSuccess(true);
         setIsVerifying(false);
         isDraggingRef.current = false;
@@ -173,15 +170,10 @@ export default function LoginCard() {
     const handleTouchMove = (e: TouchEvent) => {
       if (!isDraggingRef.current || e.touches.length === 0) return;
       
-      e.preventDefault();
-      e.stopPropagation();
-      
-      const containerRect = container.getBoundingClientRect();
-      const maxPosition = containerRect.width - sliderWidth;
-      
       // 计算新位置
       const deltaX = e.touches[0].clientX - startXRef.current;
       let position = startPositionRef.current + deltaX;
+      const maxPosition = maxPositionRef.current;
       
       // 限制在有效范围内
       position = Math.max(0, Math.min(position, maxPosition));
@@ -190,7 +182,7 @@ export default function LoginCard() {
       slider.style.transform = `translateX(${position}px)`;
 
       // 检查终点
-      if (position >= maxPosition - 5) {
+      if (position >= maxPosition - 2) {
         setVerificationSuccess(true);
         setIsVerifying(false);
         isDraggingRef.current = false;
