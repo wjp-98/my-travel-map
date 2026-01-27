@@ -41,7 +41,7 @@ export default function LoginCard() {
         form.setFields([{ name: 'password', errors: [data as unknown as string] }]);
         return;
       }
-      login(data.user, data.token);
+      login(data.user, data.accessToken, data.refreshToken);
       router.push('/');
     } catch (error) {
       message.error('登录失败，请重试');
@@ -72,7 +72,7 @@ export default function LoginCard() {
         return;
       }
       if (response.data.success && typeof response.data === 'object') {
-         login(response.data.data.user, response.data.data.token);
+         login(response.data.data.user, response.data.data.accessToken, response.data.data.refreshToken);
          router.push('/');
       }
 

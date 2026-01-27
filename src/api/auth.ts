@@ -17,7 +17,8 @@ interface LoginSuccessResponse {
       day: number;
     };
   };
-  token: string;
+  accessToken: string;
+  refreshToken: string;
 }
 
 export interface LoginResponse {
@@ -58,7 +59,8 @@ export interface RegisterResponse {
         day: number;
       };
     };
-    token: string;
+    accessToken: string;
+    refreshToken: string;
   };
   message: string;
 }
@@ -77,4 +79,23 @@ export interface UserInfo {
 
 export const getUserInfo = () => {
   return request.get<UserInfo>('/auth/user-info');
+};
+
+// 刷新 token 接口
+export interface RefreshTokenResponse {
+  code: number;
+  success: boolean;
+  data: {
+    accessToken: string;
+    refreshToken?: string;
+  };
+  message: string;
+}
+
+export const refreshToken = (refreshTokenValue: string) => {
+  return request.post<RefreshTokenResponse>('/auth/refresh-token', {}, {
+    headers: {
+      'X-Refresh-Token': refreshTokenValue,
+    },
+  });
 }; 
