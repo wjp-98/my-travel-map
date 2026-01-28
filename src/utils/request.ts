@@ -8,7 +8,7 @@ const request = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: true, // 允许携带 cookie
+  // withCredentials: true, // 允许携带 cookie
 });
 
 // 是否正在刷新 token
@@ -131,7 +131,7 @@ request.interceptors.response.use(
               headers: {
                 'X-Refresh-Token': refreshTokenValue,
               },
-              withCredentials: true,
+              // withCredentials: true,
             }
           );
 

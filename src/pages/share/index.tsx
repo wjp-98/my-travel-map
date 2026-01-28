@@ -4,9 +4,10 @@ import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import Layout from '@/components/Layout';
 import { useRouter } from 'next/router';
-import { getTravelRecordById, getTravelRecordByNewTime } from '@/api/travel';
-import type { TravelRecord } from '@/api/travel';
+import { getTravelDetailList } from '@/api/article';
+import type { TravelDetail } from '@/api/article';
 import dayjs from 'dayjs';
+import { HeartOutlined, MessageOutlined, EyeOutlined } from '@ant-design/icons';
 
 // 模拟分享数据
 // const mockShares = [
@@ -66,7 +67,7 @@ import dayjs from 'dayjs';
 export default function SharePage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('latest');
-  const [shares, setShares] = useState<TravelRecord[]>([]);
+  const [shares, setShares] = useState<TravelDetail[]>([]);
   const [loading, setLoading] = useState(false);
   const [allLoaded, setAllLoaded] = useState(false);
   const router = useRouter();
@@ -74,58 +75,36 @@ export default function SharePage() {
   const [total, setTotal] = useState(0);
 
   const handleViewDetails = (id: string) => {
-    router.push(`/travel/${id}`);
+    router.push(`/article/${id}`);
   };
 
-  const queryMyTravelRecord = async (page: number) => {
+  const queryTravelDetailList = async (page: number) => {
     try {
-      const { data } = await getTravelRecordById(page);
+      setLoading(true);
+      const { data } = await getTravelDetailList(page, 10, 'createdAt', 'desc');
       if (page === 1) {
         setShares(data.data.list);
       } else {
         setShares(prev => [...prev, ...data.data.list]);
       }
       setTotal(data.data.pagination.total);
-      setAllLoaded(shares.length + data.data.list.length >= data.data.pagination.total);
-      setLoading(false);
-    } catch (error) {
-      console.log(error);
-      setLoading(false);
-    }
-  }
-
-  const queryNewTravelRecord = async (page: number) => {
-    try {
-      const { data } = await getTravelRecordByNewTime(page);
-      console.log(data)
-      if (page === 1) {
-        setShares(data.data.list);
-      } else {
-        setShares(prev => [...prev, ...data.data.list]);
-      }
-      setTotal(data.data.pagination.total);
-      setAllLoaded(shares.length + data.data.list.length >= data.data.pagination.total);
-      setLoading(false);
+      setAllLoaded(data.data.list.length < 10 || shares.length + data.data.list.length >= data.data.pagination.total);
       setCurrentPage(data.data.pagination.page);
     } catch (error) {
       console.log(error);
+    } finally {
       setLoading(false);
     }
   }
 
   const loadMoreShares = () => {
     if (loading || allLoaded) return;
-    setLoading(true);
-    if (activeTab === 'latest') {
-      queryNewTravelRecord(currentPage + 1);
-    } else {
-      queryMyTravelRecord(currentPage + 1);
-    }
+    queryTravelDetailList(currentPage + 1);
   };
 
   useEffect(() => {
     const handleScroll = () => {
-      if (window.innerHeight + document.documentElement.scrollTop === document.documentElement.offsetHeight) {
+      if (window.innerHeight + document.documentElement.scrollTop >= document.documentElement.offsetHeight - 100) {
         loadMoreShares();
       }
     };
@@ -135,149 +114,160 @@ export default function SharePage() {
   }, [currentPage, loading, allLoaded]);
 
   useEffect(() => {
-    queryNewTravelRecord(1);
+    queryTravelDetailList(1);
   }, []);
 
   return (
     <Layout>
       <div className="min-h-screen bg-gray-50">
-        {/* 顶部横幅 */}
-        <div className="relative h-64 bg-gradient-to-r from-indigo-500 to-purple-600">
-          <div className="absolute inset-0 bg-black opacity-40"></div>
-          <div className="relative h-full flex items-center justify-center">
-            <div className="text-center text-white">
-              <h1 className="text-4xl font-bold mb-4">旅行分享</h1>
-              <p className="text-xl">分享您的旅行故事，发现世界的精彩</p>
-            </div>
-          </div>
-        </div>
-
-        {/* 主要内容 */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          {/* 标签页 */}
-          <div className="flex justify-center mb-8">
-            <div className="flex space-x-4 bg-white rounded-lg shadow-sm p-2">
-              <button
-                onClick={() => {
-                  setActiveTab('latest')
-                  setShares([])
-                  queryNewTravelRecord(1);
-                }}
-                className={`px-4 py-2 rounded-md transition-colors duration-200 ${activeTab === 'latest'
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-              >
-                最新分享
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab('myShares')
-                  setShares([]);
-                  queryMyTravelRecord(1);
-                }}
-                className={`px-4 py-2 rounded-md transition-colors duration-200 ${activeTab === 'myShares'
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-              >
-                我的分享
-              </button>
-              <button
-                disabled
-                className="px-4 py-2 rounded-md text-gray-400 cursor-not-allowed flex items-center"
-              >
-                热门分享
-                <span className="ml-2 text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded">开发中</span>
-              </button>
-            </div>
+        {/* 主要内容 - 朋友圈样式 */}
+        <div className="max-w-2xl mx-auto px-4 py-6">
+          {/* 标题 */}
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-gray-900">旅行分享</h1>
+            <p className="text-gray-500 mt-1">发现世界的精彩</p>
           </div>
 
-          {/* 分享卡片网格 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {/* 分享列表 - 朋友圈样式 */}
+          <div className="space-y-4">
             {shares.map((share) => (
               <motion.div
-                key={share._id}
+                key={share.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-200"
+                transition={{ duration: 0.3 }}
+                className="bg-white rounded-lg shadow-sm overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => handleViewDetails(share.id)}
               >
-                {/* 图片轮播 */}
-                <div className="relative h-48">
-                  <Image
-                    src={share.cityImage}
-                    alt={share.title}
-                    fill
-                    className="object-cover"
-                  />
+                {/* 作者信息 */}
+                <div className="p-4 pb-3">
+                  <div className="flex items-center space-x-3">
+                    <div className="relative w-10 h-10 rounded-full overflow-hidden flex-shrink-0">
+                      <Image
+                        src={share.author.avatar || '/images/default-avatar.jpg'}
+                        alt={share.author.username}
+                        fill
+                        className="object-cover"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 truncate">{share.author.username}</p>
+                      <p className="text-xs text-gray-500">{dayjs(share.createdAt).format('MM月DD日 HH:mm')}</p>
+                    </div>
+                    <div className="text-xs text-gray-400">{share.location?.city || share.cityName}</div>
+                  </div>
                 </div>
 
-                {/* 内容区域 */}
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="relative w-10 h-10 rounded-full overflow-hidden">
+                {/* 文字内容 */}
+                {share.description && (
+                  <div className="px-4 pb-3">
+                    <p className="text-gray-800 leading-relaxed line-clamp-3">{share.description}</p>
+                  </div>
+                )}
+
+                {/* 图片展示 - 类似朋友圈 */}
+                {share.images && share.images.length > 0 && (
+                  <div 
+                    className={`px-4 pb-3 ${
+                      share.images.length === 1 
+                        ? '' 
+                        : share.images.length === 4
+                        ? 'grid grid-cols-2 gap-1'
+                        : share.images.length <= 3
+                        ? 'grid grid-cols-3 gap-1'
+                        : 'grid grid-cols-3 gap-1'
+                    }`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {share.images.slice(0, 9).map((img, index) => (
+                      <div
+                        key={index}
+                        className={`relative ${
+                          share.images.length === 1
+                            ? 'w-full h-96'
+                            : share.images.length === 4 && index === 0
+                            ? 'col-span-2 row-span-2 h-48'
+                            : 'aspect-square'
+                        } overflow-hidden rounded`}
+                      >
                         <Image
-                          src={share.createdBy.avatar || '/images/default-avatar.jpg'}
-                          alt={share.createdBy.username}
+                          src={img.url || img}
+                          alt={`${share.title} - 图片 ${index + 1}`}
                           fill
                           className="object-cover"
                         />
+                        {share.images.length > 9 && index === 8 && (
+                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                            <span className="text-white text-lg font-bold">+{share.images.length - 9}</span>
+                          </div>
+                        )}
                       </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{share.createdBy.username}</p>
-                        <p className="text-sm text-gray-500">{share.travelMap.cityName}</p>
-                      </div>
-                    </div>
-                    <span className="text-sm text-gray-500">{dayjs(share.createdAt).format('YYYY-MM-DD')}</span>
+                    ))}
                   </div>
+                )}
 
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                    {share.title}
-                  </h3>
-                  <p className="text-gray-600 mb-4 line-clamp-2">
-                    {share.description}
-                  </p>
-
-                  {/* 互动区域 */}
-                  <div className="flex items-center justify-between pt-4 border-t">
-                    <div className="flex space-x-4">
-                      <button className="flex items-center space-x-1 text-gray-400 cursor-not-allowed">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                        </svg>
-                        {/* <span>{share.likes}</span> */}
-                      </button>
-                      <button className="flex items-center space-x-1 text-gray-400 cursor-not-allowed">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                        </svg>
-                        {/* <span>{share.comments}</span> */}
-                      </button>
+                {/* 封面图（如果没有图片列表） */}
+                {(!share.images || share.images.length === 0) && share.coverImage && (
+                  <div className="px-4 pb-3">
+                    <div className="relative w-full h-64 overflow-hidden rounded">
+                      <Image
+                        src={share.coverImage}
+                        alt={share.title}
+                        fill
+                        className="object-cover"
+                      />
                     </div>
-                    <button
-                      onClick={() => handleViewDetails(share._id)}
-                      className="text-indigo-600 hover:text-indigo-700 font-medium"
-                    >
-                      查看详情
-                    </button>
+                  </div>
+                )}
+
+                {/* 互动区域 */}
+                <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+                  <div className="flex items-center space-x-6 text-gray-500">
+                    <div className="flex items-center space-x-1">
+                      <HeartOutlined className="text-lg" />
+                      <span className="text-sm">{share.stats?.likes || 0}</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <MessageOutlined className="text-lg" />
+                      <span className="text-sm">{share.stats?.comments || 0}</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <EyeOutlined className="text-lg" />
+                      <span className="text-sm">{share.stats?.views || 0}</span>
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    {share.cityName}
                   </div>
                 </div>
               </motion.div>
             ))}
           </div>
 
-          {/* 加载更多按钮 */}
-          <div className="mt-12 text-center">
-            <button
-              onClick={loadMoreShares}
-              className="px-6 py-3 bg-white text-indigo-600 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200"
-              disabled={loading || allLoaded}
-            >
-              {loading ? '加载中...' : allLoaded ? '没有更多记录了喔' : '加载更多'}
-            </button>
-          </div>
+          {/* 加载更多 */}
+          {!allLoaded && (
+            <div className="mt-6 text-center">
+              <button
+                onClick={loadMoreShares}
+                className="px-6 py-2 text-gray-600 hover:text-gray-900 transition-colors"
+                disabled={loading}
+              >
+                {loading ? '加载中...' : '加载更多'}
+              </button>
+            </div>
+          )}
+
+          {allLoaded && shares.length > 0 && (
+            <div className="mt-6 text-center text-gray-400 text-sm">
+              没有更多内容了
+            </div>
+          )}
+
+          {shares.length === 0 && !loading && (
+            <div className="text-center py-12 text-gray-400">
+              暂无分享内容
+            </div>
+          )}
         </div>
       </div>
     </Layout>

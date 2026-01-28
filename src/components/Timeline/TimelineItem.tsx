@@ -11,16 +11,16 @@ interface TimelineItemProps {
   image: string;
   description: string;
   index: number;
-  id:string;
+  cityName: string;
 }
 
-export default function TimelineItem({ date, location, image, description, index,id }: TimelineItemProps) {
+export default function TimelineItem({ date, location, image, description, index, cityName }: TimelineItemProps) {
   const isEven = index % 2 === 0;
   const [isExpanded, setIsExpanded] = useState(false);
   const router = useRouter();
   
   const handleCardClick = () => {
-    router.push(`/article/${id}`);
+    router.push(`/article/${encodeURIComponent(cityName)}`);
   };
 
   return (

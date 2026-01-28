@@ -17,7 +17,7 @@ const pageTransition = {
   transition: { duration: 0.5 }
 };
 
-const TravelForm = dynamic(() => import('@/components/TravelForm'), {
+const TravelDetailForm = dynamic(() => import('@/components/TravelDetailForm'), {
   ssr: false,
   loading: () => (
     <div className="animate-pulse">
@@ -136,7 +136,7 @@ export default function CreateTravel() {
                 transition={{ delay: 0.6 }}
                 className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-6 md:p-8"
               >
-                <TravelForm />
+                <TravelDetailForm />
               </motion.div>
             </div>
           </div>

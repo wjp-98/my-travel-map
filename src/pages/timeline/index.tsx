@@ -51,7 +51,7 @@ export default function Timeline() {
                   image={item.cityImage}
                   description={item.description}
                   index={index}
-                  id={item.id}
+                  cityName={item.cityName}
                 />
               ))}
             </div>
