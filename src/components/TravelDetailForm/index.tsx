@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Form, Input, Button, message, Upload, Steps, Select, InputNumber, Space, Rate } from 'antd';
 import { motion } from 'framer-motion';
 import { useOSSUpload } from '@/hooks/useOSSUpload';
 import { UploadOutlined, PlusOutlined, MinusCircleOutlined, FilePdfOutlined } from '@ant-design/icons';
 import { createTravelDetail } from '@/api/article';
 import { useRouter } from 'next/router';
-import type { UploadFile } from 'antd/es/upload/interface';
+import { getDictionariesByType } from '@/api/dictionary';
+import type { Dictionary } from '@/api/dictionary';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -51,6 +52,27 @@ interface TravelDetailFormValues {
   
   // 攻略PDF
   guidePdf: string;
+  
+  // 出发地
+  departure: {
+    city: string;
+    coordinates?: {
+      lat: number;
+      lng: number;
+    };
+  };
+  
+  // 目的地
+  destination: {
+    city: string;
+    coordinates?: {
+      lat: number;
+      lng: number;
+    };
+  };
+  
+  // 出行方式
+  transportMode: string;
 }
 
 export default function TravelDetailForm() {
@@ -62,6 +84,22 @@ export default function TravelDetailForm() {
   const [imageList, setImageList] = useState<string[]>([]);
   const [guidePdfUrl, setGuidePdfUrl] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
+  const [transportModes, setTransportModes] = useState<Dictionary[]>([]);
+
+  // 加载出行方式字典
+  useEffect(() => {
+    const loadTransportModes = async () => {
+      try {
+        const response = await getDictionariesByType('transport_mode');
+        if (response.data.success) {
+          setTransportModes(response.data.data);
+        }
+      } catch (error) {
+        console.error('加载出行方式失败:', error);
+      }
+    };
+    loadTransportModes();
+  }, []);
 
   const steps = [
     {
@@ -164,6 +202,9 @@ export default function TravelDetailForm() {
         tags: values.tags || [],
         travelTime: values.travelTime,
         overallRating: values.overallRating,
+        departure: values.departure || {},
+        destination: values.destination || {},
+        transportMode: values.transportMode || '',
         images: imageList,
         attractions: values.attractions || [],
         foodReviews: values.foodReviews || [],
@@ -263,6 +304,73 @@ export default function TravelDetailForm() {
             >
               <Rate allowHalf />
             </Form.Item>
+
+            <div className="border-t pt-6 mt-6">
+              <h4 className="font-medium mb-4">出行信息</h4>
+              
+              <Form.Item
+                name={['departure', 'city']}
+                label="出发城市"
+              >
+                <Input placeholder="例如：北京" className="h-12" />
+              </Form.Item>
+
+              <Space className="w-full" size="middle">
+                <Form.Item
+                  name={['departure', 'coordinates', 'lat']}
+                  label="出发地纬度"
+                  className="flex-1"
+                >
+                  <InputNumber placeholder="纬度" className="w-full" style={{ height: '48px' }} />
+                </Form.Item>
+
+                <Form.Item
+                  name={['departure', 'coordinates', 'lng']}
+                  label="出发地经度"
+                  className="flex-1"
+                >
+                  <InputNumber placeholder="经度" className="w-full" style={{ height: '48px' }} />
+                </Form.Item>
+              </Space>
+
+              <Form.Item
+                name={['destination', 'city']}
+                label="目的城市"
+              >
+                <Input placeholder="例如：上海" className="h-12" />
+              </Form.Item>
+
+              <Space className="w-full" size="middle">
+                <Form.Item
+                  name={['destination', 'coordinates', 'lat']}
+                  label="目的地纬度"
+                  className="flex-1"
+                >
+                  <InputNumber placeholder="纬度" className="w-full" style={{ height: '48px' }} />
+                </Form.Item>
+
+                <Form.Item
+                  name={['destination', 'coordinates', 'lng']}
+                  label="目的地经度"
+                  className="flex-1"
+                >
+                  <InputNumber placeholder="经度" className="w-full" style={{ height: '48px' }} />
+                </Form.Item>
+              </Space>
+
+              <Form.Item
+                name="transportMode"
+                label="出行方式"
+              >
+                <Select placeholder="请选择出行方式" className="h-12">
+                  {transportModes.map(mode => (
+                    <Option key={mode.id} value={mode.value}>
+                      {mode.label}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </div>
           </div>
         );
 

@@ -2,9 +2,10 @@
 
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Canvas, useFrame, useLoader } from "@react-three/fiber";
-import { OrbitControls, Stars, Html, Sphere, useTexture, Float, ContactShadows } from "@react-three/drei";
+import { OrbitControls, Stars, Html, Sphere, useTexture, Float, ContactShadows, Line } from "@react-three/drei";
 import * as THREE from "three";
-import { queryMyCityFootprints } from "../api/my-city"
+import { queryMyCityFootprints } from "../api/my-city";
+import { getTravelRoutes } from "../api/article";
 
 interface City {
   name: string;
@@ -12,6 +13,21 @@ interface City {
   lng: number;
   color?: string;
   isMajor?: boolean;
+}
+
+interface TravelRoute {
+  id: string;
+  departure: {
+    city: string;
+    coordinates: { lat: number; lng: number };
+  };
+  destination: {
+    city: string;
+    coordinates: { lat: number; lng: number };
+  };
+  transportMode: string;
+  cityName: string;
+  title: string;
 }
 
 const earthRadius = 4;
@@ -25,6 +41,34 @@ const convertGeoTo3D = (radius: number, lat: number, lng: number) => {
     y: radius * Math.cos(phi),
     z: radius * Math.sin(phi) * Math.sin(theta),
   };
+};
+
+// 计算两点间的曲线路径（大圆路径，带弧度）
+const calculateCurve = (start: THREE.Vector3, end: THREE.Vector3, segments: number = 100) => {
+  const points: THREE.Vector3[] = [];
+  const startNormalized = start.clone().normalize();
+  const endNormalized = end.clone().normalize();
+  
+  // 计算中点，用于创建弧线
+  const midPoint = new THREE.Vector3().addVectors(startNormalized, endNormalized).normalize();
+  // 计算弧线高度（控制曲线的弯曲程度）
+  const arcHeight = 0.3; // 增加弧度，使曲线更明显
+  midPoint.multiplyScalar(1 + arcHeight);
+  
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    // 使用二次贝塞尔曲线创建弧形路径
+    const point1 = new THREE.Vector3().lerpVectors(startNormalized, midPoint, t);
+    const point2 = new THREE.Vector3().lerpVectors(midPoint, endNormalized, t);
+    const point = new THREE.Vector3().lerpVectors(point1, point2, t);
+    
+    point.normalize();
+    // 将曲线稍微抬高，使其在地球表面上方
+    point.multiplyScalar(earthRadius + 0.08);
+    points.push(point);
+  }
+  
+  return points;
 };
 
 // 主要世界城市数据
@@ -165,10 +209,186 @@ function Atmosphere({ radius }: { radius: number }) {
   );
 }
 
-function Earth3D() {
+// 交通工具组件
+function TransportIcon({ 
+  position, 
+  transportMode, 
+  progress,
+  direction
+}: { 
+  position: THREE.Vector3; 
+  transportMode: string;
+  progress: number;
+  direction?: THREE.Vector3;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  
+  // 根据出行方式选择图标和颜色
+  const getTransportConfig = (mode: string) => {
+    switch (mode) {
+      case '飞机':
+        return { color: '#3b82f6', size: 0.01, icon: '✈️' };
+      case '高铁':
+        return { color: '#ef4444', size: 0.01, icon: '🚄' };
+      case '火车':
+        return { color: '#f59e0b', size: 0.01, icon: '🚂' };
+      case '汽车':
+        return { color: '#10b981', size: 0.01, icon: '🚗' };
+      case '轮船':
+        return { color: '#06b6d4', size: 0.01, icon: '🚢' };
+      default:
+        return { color: '#ffffff', size: 0.01, icon: '📍' };
+    }
+  };
+  
+  const config = getTransportConfig(transportMode);
+  
+  useFrame(({ camera }) => {
+    if (groupRef.current && direction && direction.length() > 0) {
+      // 让图标沿着轨迹方向移动
+      const target = position.clone().add(direction.clone().multiplyScalar(0.1));
+      groupRef.current.lookAt(target);
+    } else if (groupRef.current) {
+      // 如果没有方向，让图标始终面向相机
+      groupRef.current.lookAt(camera.position);
+    }
+  });
+  
+  return (
+    <group ref={groupRef} position={position}>
+      <Html center distanceFactor={20}>
+        <div
+          style={{
+            fontSize: '14px',
+            transform: `scale(${1 + Math.sin(progress * Math.PI * 2) * 0.2})`,
+            transition: 'transform 0.1s',
+          }}
+        >
+          {config.icon}
+        </div>
+      </Html>
+      <Sphere args={[config.size, 8, 8]}>
+        <meshStandardMaterial 
+      
+          emissiveIntensity={1}
+          toneMapped={false}
+        />
+      </Sphere>
+    </group>
+  );
+}
+
+// 路线曲线组件
+function TravelRouteLine({ route }: { route: TravelRoute }) {
+  const [curvePoints, setCurvePoints] = useState<THREE.Vector3[]>([]);
+  const [progress, setProgress] = useState(0);
+  const [currentPosition, setCurrentPosition] = useState<THREE.Vector3 | null>(null);
+  const [direction, setDirection] = useState<THREE.Vector3>(new THREE.Vector3(0, 0, 1));
+  
+  useEffect(() => {
+    const start = convertGeoTo3D(
+      earthRadius,
+      route.departure.coordinates.lat,
+      route.departure.coordinates.lng
+    );
+    const end = convertGeoTo3D(
+      earthRadius,
+      route.destination.coordinates.lat,
+      route.destination.coordinates.lng
+    );
+    
+    const startVec = new THREE.Vector3(start.x, start.y, start.z);
+    const endVec = new THREE.Vector3(end.x, end.y, end.z);
+    
+    const points = calculateCurve(startVec, endVec);
+    setCurvePoints(points);
+  }, [route]);
+  
+  // 动画进度 - 往复运动
+  useFrame((state) => {
+    if (curvePoints.length === 0) return;
+    
+    const time = state.clock.elapsedTime * 0.15; // 调整速度
+    // 使用正弦波实现往复运动：0 -> 1 -> 0 -> 1...
+    const forward = Math.sin(time) * 0.5 + 0.5; // 0 到 1
+    setProgress(forward);
+    
+    // 计算当前交通工具位置
+    const currentIndex = Math.floor(forward * (curvePoints.length - 1));
+    const nextIndex = Math.min(currentIndex + 1, curvePoints.length - 1);
+    const t = (forward * (curvePoints.length - 1)) % 1;
+    const pos = curvePoints[currentIndex].clone().lerp(curvePoints[nextIndex], t);
+    setCurrentPosition(pos);
+    
+    // 计算交通工具的朝向（沿着曲线方向）
+    const dir = curvePoints[nextIndex].clone().sub(curvePoints[currentIndex]).normalize();
+    setDirection(dir);
+  });
+  
+  if (curvePoints.length === 0) return null;
+  
+  return (
+    <group>
+      {/* 绘制曲线 - 使用 drei 的 Line 组件 */}
+      <Line
+        points={curvePoints}
+        color="#3b82f6"
+        lineWidth={4}
+        transparent
+        opacity={0.9}
+        depthTest={false}
+      />
+      
+      {/* 交通工具图标 */}
+      {currentPosition && (
+        <TransportIcon 
+          position={currentPosition} 
+          transportMode={route.transportMode}
+          progress={progress}
+          direction={direction}
+        />
+      )}
+    </group>
+  );
+}
+
+// Mock 数据用于测试
+const MOCK_ROUTES: TravelRoute[] = [
+  {
+    id: 'mock-1',
+    departure: {
+      city: '武汉',
+      coordinates: { lat: 30.5928, lng: 114.3055 }
+    },
+    destination: {
+      city: '杭州',
+      coordinates: { lat: 30.2741, lng: 120.1551 }
+    },
+    transportMode: '飞机',
+    cityName: '杭州',
+    title: '武汉到杭州'
+  },
+  {
+    id: 'mock-2',
+    departure: {
+      city: '北京',
+      coordinates: { lat: 39.9042, lng: 116.4074 }
+    },
+    destination: {
+      city: '新疆',
+      coordinates: { lat: 43.8256, lng: 87.6168 } // 乌鲁木齐
+    },
+    transportMode: '汽车',
+    cityName: '新疆',
+    title: '北京到新疆'
+  }
+];
+
+function Earth3D({ useMockData }: { useMockData: boolean }) {
   const earthRef = useRef<THREE.Mesh>(null);
   const [isautorotate, setIsautorotate] = useState(true);
-  const [cities, setCities] = useState<City[]>([])
+  const [cities, setCities] = useState<City[]>([]);
+  const [routes, setRoutes] = useState<TravelRoute[]>([]);
 
   const axialTilt = THREE.MathUtils.degToRad(23.5);
   const rotationAxis = new THREE.Vector3(
@@ -198,8 +418,34 @@ function Earth3D() {
     }
   }
 
+  const getTravelRoutesData = async () => {
+    try {
+      if (useMockData) {
+        // 使用mock数据
+        setRoutes(MOCK_ROUTES);
+        return;
+      }
+      
+      const response = await getTravelRoutes();
+      if (response?.data?.success && response.data.data) {
+        setRoutes(response.data.data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch travel routes:", error);
+      // 如果API失败，使用mock数据
+      setRoutes(MOCK_ROUTES);
+    }
+  }
+
   useEffect(() => {
     getMyTravelCity();
+  }, []);
+
+  useEffect(() => {
+    getTravelRoutesData();
+  }, [useMockData]);
+
+  useEffect(() => {
     if (earthRef.current) {
       // 调整初始姿态：北半球朝上
       // x 轴设为 0，确保地轴垂直（或接近垂直）
@@ -238,6 +484,10 @@ function Earth3D() {
         {MAJOR_CITIES.map((city, index) => (
           <CityMarker key={`major-${index}`} city={city} radius={earthRadius} />
         ))}
+        {/* 旅行路线 - 放在地球内部，随地球一起旋转 */}
+        {routes && routes.length > 0 && routes.map((route) => (
+          <TravelRouteLine key={route.id} route={route} />
+        ))}
       </mesh>
       {/* 云层效果 */}
       <mesh rotation={[0, 0, 0.1]}>
@@ -254,6 +504,8 @@ function Earth3D() {
 }
 
 const EarthScene = () => {
+  const [useMockData, setUseMockData] = useState(true); // 使用mock数据开关
+  
   if (typeof window === 'undefined') {
     return null;
   }
@@ -293,7 +545,7 @@ const EarthScene = () => {
         />
         <pointLight position={[-10, -10, -10]} intensity={0.5} color="#4ca9ff" />
         
-        <Earth3D />
+        <Earth3D useMockData={useMockData} />
         
         <ContactShadows 
           position={[0, -5, 0]} 
@@ -333,8 +585,26 @@ const EarthScene = () => {
             <div className="w-4 h-px bg-white/40" />
             <span>国际边界线</span>
           </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-px bg-blue-400/60" />
+            <span>旅行路线</span>
+          </div>
         </div>
       </div>
+      
+      {/* Mock数据提示 */}
+      {useMockData && (
+        <div className="absolute top-8 right-8 p-3 bg-yellow-500/20 backdrop-blur-lg border border-yellow-400/30 rounded-lg text-yellow-200 text-xs pointer-events-auto">
+          <div className="font-semibold mb-1">测试模式</div>
+          <div>正在使用Mock数据展示路线效果</div>
+          <button
+            onClick={() => setUseMockData(false)}
+            className="mt-2 px-2 py-1 bg-yellow-500/30 hover:bg-yellow-500/50 rounded text-xs transition-colors"
+          >
+            切换到真实数据
+          </button>
+        </div>
+      )}
     </div>
   );
 };

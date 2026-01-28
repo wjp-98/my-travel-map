@@ -204,6 +204,28 @@ export const createTravelDetail = (data: Partial<TravelDetail>) => {
   return request.post<TravelDetailResponse>('/travel/', data);
 };
 
+// 获取旅行路线列表（用于地球页面）
+export const getTravelRoutes = () => {
+  return request.get<{
+    code: number;
+    success: boolean;
+    data: Array<{
+      id: string;
+      departure: {
+        city: string;
+        coordinates: { lat: number; lng: number };
+      };
+      destination: {
+        city: string;
+        coordinates: { lat: number; lng: number };
+      };
+      transportMode: string;
+      cityName: string;
+      title: string;
+    }>;
+  }>('/travel/routes');
+};
+
 // 点赞/取消点赞
 export const toggleLike = (id: string) => {
   return request.post<{ success: boolean; isLiked: boolean; likes: number }>(`/travel/${id}/like`);
